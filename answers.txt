@@ -1,0 +1,88 @@
+*******************************
+*      Exercises 1 and 6      *
+*******************************
+
+Step 3: simpledb.Parser.handleQueryStatement()
+	The method serves to parse through the query and create a physical plan to execute. It does this by:
+	1. First, it calls parseQueryLogicalPlan to create a LogicalPlan that is later converted to a physical plan. 
+	2. Next, it converts the LogicalPlan to a physicalPlan by calling the LogicalPlan method physicalPlan().
+
+Step 4: simpledb.Parser.parseQueryLogicalPlan()
+	This method creates a LogicalPlan from the query. It goes through the FROM clause and scans tables as needed, then the WHERE clause, creating Filter and Joins as needed, then gets any GROUP BY fields and aggregates the SELECT columns as needed. When processing the WHERE clause, it calls Parser.processExpression().
+
+Step 6: simpledb.Parser.processExpression()
+	This method parses through the statements in the WHERE clause, and checks for nested queries. If there are nested queries, it calls parseQueryLogicalPlan() again to process the subplan.
+
+Step 7: simplddb.LogicalPlan.physicalPlan()
+	This method converts the LogicalPlan into a physical plan by filtering calling JoinOptimizer.orderJoins to find the optimal order of joins.
+
+Step 8: execute()
+	Once the order of the joins is determined, the columns aggregated and filtered appropriately, the query will execute.
+
+
+6.1 Query ran against the 10% database.
+The query plan is:
+                            π(d.fname,d.lname),card:323818
+                            |
+                            ⨝(a.id=c.pid),card:323818
+  __________________________|___________________________
+  |                                                    |
+  σ(a.lname=Spicer),card:1                             ⨝(m.mid=c.mid),card:323818
+  |                                    ________________|_________________
+  σ(a.fname=John),card:1               |                                |
+  |                                    ⨝(d.id=m.did),card:29762         |
+  |                           _________|_________                       |
+  |                           |                 |                     scan(Casts c)
+scan(Actor a)               scan(Director d)  scan(Movie_Director m)
+
+d.fname	d.lname	
+------------------------
+
+The optimizer selected this plan because first, Actors and Casts are much larger than Director and Movie_Director, so it makes sense to join the smaller ones first and to apply projections to the larger ones. We don't use any primary keys, so our join order doesn't have to take that into account. 
+
+
+6.2
+select mov.name, g.genre
+from Actor a, Casts c, Movie_Director m, Genre g, Movie mov
+where a.id=c.pid and c.mid=m.mid 
+and g.mid=m.mid and mov.id=m.mid
+and a.fname='Kevin' and a.lname='Bacon';
+
+
+The query plan is:
+                                   π(mov.name,g.genre),card:323818
+                                   |
+                                   ⨝(a.id=c.pid),card:323818
+  _________________________________|_________________________________
+  |                                                                 |
+  σ(a.lname=Bacon),card:1                                           ⨝(m.mid=c.mid),card:323818
+  |                                                 ________________|_________________
+  σ(a.fname=Kevin),card:1                           |                                |
+  |                                                 ⨝(m.mid=mov.id),card:47512       |
+  |                                 ________________|________________                |
+  |                                 |                               |                |
+  |                                 ⨝(g.mid=m.mid),card:47512       |                |
+  |                          _______|________                       |                |
+scan(Actor a)                |              |                     scan(Movie mov)    |
+                           scan(Genre g)  scan(Movie_Director m)                   scan(Casts c)
+
+mov.name	g.genre	
+-------------------------
+
+Again, it makes sense to try to make Actor smaller before joining it to the rest of the tables, which is why we apply the projections first. Genre and Movie_Director are smaller tables, so joining them together first would keep the resulting tables and cardinality small, such that we still join a (relatively) small table to a larger one, instead of joining two tables. It joins the result of Genre and Movie_Director with Movie, because we select with the primary key of Movie, so it is still relatively cheap compared to joining with Casts. So, we do it earlier with smaller table rather than a larger one.
+
+**********************************************************
+*  Discuss and justify any changes you made to the API.  *
+**********************************************************
+none
+
+***************************************************************
+*  Describe any missing or incomplete elements of your code.  *
+***************************************************************
+none
+
+************************************************
+*  Describe how long you spent on the project  *
+************************************************
+I spent rougly 25 hours on this project. Everything was pretty straightforward - the documentation was very helpful. I spent an inordinate amount of time debugging IntHistogram, because of an off-by-one error, all because I failed to read the documentation carefully enough.
+
